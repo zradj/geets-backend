@@ -1,30 +1,19 @@
-import os
-import re
-import secrets
 from datetime import datetime, timedelta
-
-import jwt
+import secrets
 from fastapi import Depends, HTTPException, status
 from fastapi.routing import APIRouter
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
-from passlib.context import CryptContext
 
 from db.session import get_session
 from schemas.user import User
-
-SECRET_KEY = os.getenv('JWT_SECRET') or secrets.token_urlsafe(32)
-ALGORITHM = 'HS256'
-TOKEN_EXPIRE_MINS = 60
-PASSWORD_REGEX = re.compile(r'((?=\d)(?=[a-z])(?=[A-Z])(?=[\W]).{8,64})')
+from utils.auth import get_password_hash, create_access_token, verify_password
 
 router = APIRouter(prefix='/auth')
-pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
-
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
-    password: str = Field(pattern=PASSWORD_REGEX, min_length=8, max_length=64)
+    password: str = Field(min_length=8, max_length=64)
 
 
 class SuccessfulAuthResponse(BaseModel):
@@ -36,21 +25,6 @@ class FailedAuthResponse(BaseModel):
     status_code: int = status.HTTP_401_UNAUTHORIZED
     detail: str = 'Incorrect username or password'
     headers: dict[str, str] = {'WWW-Authenticate': 'Bearer'}
-
-
-def get_password_hash(plain: str) -> str:
-    return pwd_ctx.hash(plain)
-
-
-def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
-
-
-def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.now() + timedelta(minutes=TOKEN_EXPIRE_MINS)
-    to_encode.update({'exp': expire})
-    return jwt.encode(to_encode, SECRET_KEY, ALGORITHM)
 
 
 @router.post('/register')
