@@ -1,10 +1,9 @@
-from datetime import datetime, timedelta
-import secrets
 from fastapi import Depends, HTTPException, status
 from fastapi.routing import APIRouter
 from pydantic import BaseModel, Field
 from sqlmodel import Session, select
 
+from config import PASSWORD_REGEX
 from db.session import get_session
 from schemas.user import User
 from utils.auth import get_password_hash, create_access_token, verify_password
@@ -13,7 +12,7 @@ router = APIRouter(prefix='/auth')
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=8, max_length=64)
+    password: str = Field(pattern=PASSWORD_REGEX)
 
 
 class SuccessfulAuthResponse(BaseModel):

@@ -4,7 +4,8 @@ import re
 from passlib.context import CryptContext
 
 TOKEN_SECRET_KEY = os.getenv('JWT_SECRET')
-assert(TOKEN_SECRET_KEY is not None)
+if not TOKEN_SECRET_KEY:
+    raise RuntimeError('Missing env variable: JWT_SECRET')
 TOKEN_ALGORITHM = 'HS256'
 TOKEN_EXPIRE_MINS = 60
 
