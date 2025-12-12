@@ -24,9 +24,16 @@ class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     password: str = Field(min_length=8, max_length=100)
 
+
 class SuccessfulAuthResponse(BaseModel):
     token: str
     token_type: str = 'bearer'
+
+
+class FailedAuthResponse(BaseModel):
+    status_code: int = status.HTTP_401_UNAUTHORIZED
+    detail: str = 'Incorrect username or password'
+    headers: dict[str, str] = {'WWW-Authenticate': 'Bearer'}
 
 
 def get_password_hash(plain: str) -> str:
@@ -58,7 +65,15 @@ async def register(data: LoginRequest, session: Session = Depends(get_session)) 
     return SuccessfulAuthResponse(token=token)
 
 
-@router.post('/login')
+@router.post(
+    '/login',
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            'model': FailedAuthResponse,
+            'description': 'Incorrect Username or Password',
+        },
+    },
+)
 async def login(data: LoginRequest, session: Session = Depends(get_session)) -> SuccessfulAuthResponse:
     user = session.exec(select(User).where(User.username == data.username)).first()
     if not user or not verify_password(data.password, user.password):
