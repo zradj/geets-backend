@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 from datetime import datetime, timedelta
 
@@ -15,6 +16,7 @@ from schemas.user import User
 SECRET_KEY = os.getenv('JWT_SECRET') or secrets.token_urlsafe(32)
 ALGORITHM = 'HS256'
 TOKEN_EXPIRE_MINS = 60
+PASSWORD_REGEX = re.compile(r'((?=\d)(?=[a-z])(?=[A-Z])(?=[\W]).{8,64})')
 
 router = APIRouter(prefix='/auth')
 pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
@@ -22,7 +24,7 @@ pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
-    password: str = Field(min_length=8, max_length=100)
+    password: str = Field(pattern=PASSWORD_REGEX, min_length=8, max_length=64)
 
 
 class SuccessfulAuthResponse(BaseModel):
@@ -60,7 +62,6 @@ async def register(data: LoginRequest, session: Session = Depends(get_session)) 
     user = User(username=data.username, password=hashed_pwd)
     session.add(user)
     session.commit()
-    session.refresh(user)
     token = create_access_token({'sub': str(user.id), 'username': user.username})
     return SuccessfulAuthResponse(token=token)
 
