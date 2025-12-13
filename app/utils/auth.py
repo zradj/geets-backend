@@ -31,3 +31,6 @@ def verify_token(token: str) -> bool:
         return False
     
     return True
+
+def decode_token(token: str) -> dict:
+    return jwt.decode(token, TOKEN_SECRET_KEY, algorithms=[TOKEN_ALGORITHM])
