@@ -32,14 +32,10 @@ async def ws_messages_endpoint(
     user_id: Annotated[uuid.UUID, Depends(get_token_user_id_ws)],
     session: Session = Depends(get_session)
 ):
-    print('abc1')
     await manager.connect(user_id, websocket)
-    print('abc2')
     try:
         while True:
-            print('abc3')
             data = await websocket.receive_json()
-            print('abc4')
             ws_message = WSMessage.model_validate(data)
 
             participant = session.exec(
