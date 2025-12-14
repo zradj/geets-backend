@@ -30,3 +30,9 @@ async def handle_ping(ws, payload):
             "server_ts": datetime.now(tz=UTC).isoformat(),
         },
     })
+class WSMessageDelivered(SQLModel, table=False):
+    message_id: uuid.UUID
+
+class WSMessageSeen(SQLModel, table=False):
+    conversation_id: uuid.UUID
+    last_seen_message_id: uuid.UUID
