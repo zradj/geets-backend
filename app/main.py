@@ -2,7 +2,6 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from api import api_router
 from config import RMQ_URL

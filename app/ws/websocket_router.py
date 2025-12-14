@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from .connection import manager
 from db.session import get_session
 from schemas import Message, ConversationParticipant
-from utils.auth import get_token_user_id
+from utils.auth import get_token_user_id_ws
 
 router = APIRouter(prefix='/ws')
 
@@ -29,12 +29,9 @@ class WSMessage(BaseModel):
 @router.websocket('/messages')
 async def ws_messages_endpoint(
     websocket: WebSocket,
-    user_id: Annotated[uuid.UUID, Depends(get_token_user_id)],
+    user_id: Annotated[uuid.UUID, Depends(get_token_user_id_ws)],
     session: Session = Depends(get_session)
 ):
-    if user_id is None:
-        raise WebSocketException(status.WS_1008_POLICY_VIOLATION, reason='Invalid token')
-
     await manager.connect(user_id, websocket)
     try:
         while True:
