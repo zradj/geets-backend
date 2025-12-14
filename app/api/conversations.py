@@ -16,6 +16,14 @@ router = APIRouter(prefix='/conversations')
 class CreateConversationRequest(BaseModel):
     other_id: uuid.UUID
 
+
+class ParticipantInformation(BaseModel):
+    id: uuid.UUID
+    username: str
+    display_name: str | None
+    role: ParticipantRole
+
+
 @router.post('/create')
 async def create_conversation(
     data: CreateConversationRequest,
@@ -46,6 +54,7 @@ async def create_conversation(
 
     return conversation
 
+
 @router.get('')
 async def get_conversations(
     user_id: Annotated[uuid.UUID, Depends(get_token_user_id_http)],
@@ -58,6 +67,7 @@ async def get_conversations(
     ).all()
 
     return list(conversations)
+
 
 @router.get('/{conversation_id}/messages')
 async def get_conversation_messages(
@@ -74,6 +84,7 @@ async def get_conversation_messages(
         .order_by(desc(Message.created_at))
     ).all()
     return list(messages)
+
 
 @router.delete('/{conversation_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def delete_conversation(
@@ -94,6 +105,26 @@ async def delete_conversation(
     session.commit()
 
     return
+
+@router.get('/{conversation_id}/participants')
+async def get_group_participants(
+    conversation_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_token_user_id_http)],
+    session: Session = Depends(get_session),
+) -> list[ParticipantInformation]:
+    conversation = session.get(Conversation, conversation_id)
+    requesting_participant = session.get(ConversationParticipant, (conversation_id, user_id))
+    if not conversation or conversation.deleted or not requesting_participant:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, 'Could not find conversation')
+
+    participants = session.exec(
+        select(User.id, User.username, User.display_name, ConversationParticipant.role)
+        .join(ConversationParticipant)
+        .where(ConversationParticipant.conversation_id == conversation_id)
+    ).all()
+
+    return participants
+
 
 @router.put('/{conversation_id}/participants/{participant_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def add_group_participant(
@@ -122,6 +153,7 @@ async def add_group_participant(
     session.commit()
 
     return None
+
 
 @router.delete('/{conversation_id}/participants/{participant_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def remove_group_participant(
