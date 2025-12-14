@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 
-from sqlmodel import Session, select
+from sqlmodel import Session, select, desc
 
 from schemas import ConversationParticipant, Message
 
@@ -78,3 +78,11 @@ def delete_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
     message_json = message.model_dump_json()
     return json.loads(message_json)
+
+def get_messages(session: Session, conversation_id: uuid.UUID) -> list[Message]:
+    messages = session.exec(
+        select(Message)
+        .where(Message.conversation_id == conversation_id, Message.deleted == False)
+        .order_by(desc(Message.created_at))
+    ).all()
+    return list(messages)
