@@ -18,7 +18,7 @@ from db.session import get_session
 from schemas import Message, ConversationParticipant
 from utils.auth import get_token_user_id
 
-router = APIRouter('/ws')
+router = APIRouter(prefix='/ws')
 
 
 class WSMessage(BaseModel):
