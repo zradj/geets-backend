@@ -21,7 +21,7 @@ from sqlmodel import Session, select
 import services.messaging as messaging_service
 from .connection import manager
 from db.session import get_session
-from schemas.ws import WSRequest, WSMessageCreate, WSMessageEdit, WSMessageDelete, handle_ping
+from schemas.ws import WSRequest, WSMessageCreate, WSMessageEdit, WSMessageDelete, WSMessageDelivered, WSMessageSeen, handle_ping
 from utils.auth import get_token_user_id_ws
 
 router = APIRouter(prefix='/ws')
@@ -30,6 +30,8 @@ EVENT_HANDLERS = {
     'message.create': (WSMessageCreate, messaging_service.create_message, 'conversation.{conversation_id}.created'),
     'message.edit': (WSMessageEdit, messaging_service.edit_message, 'conversation.{conversation_id}.edited'),
     'message.delete': (WSMessageDelete, messaging_service.delete_message, 'conversation.{conversation_id}.deleted'),
+    'message.seen': (WSMessageSeen, messaging_service.mark_seen, 'conversation.{conversation_id}.seen'),
+    'message.delivered': (WSMessageDelivered, messaging_service.mark_delivered, 'conversation.{conversation_id}.delivered'),
 }
 
 PING_IDLE_TIMEOUT_S = 75
