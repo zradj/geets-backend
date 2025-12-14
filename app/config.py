@@ -16,7 +16,7 @@ if not TOKEN_SECRET_KEY:
 TOKEN_ALGORITHM = 'HS256'
 TOKEN_EXPIRE_MINS = 60
 
-PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,100}$')
+PASSWORD_REGEX = re.compile(r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]).{8,100}$')
 
 pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
