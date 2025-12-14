@@ -1,0 +1,215 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Geets Dev Client</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1100px; margin: 20px auto; }
+    input, button, textarea { padding: 8px; margin: 4px 0; width: 100%; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    pre { background: #111; color: #0f0; padding: 12px; height: 360px; overflow: auto; }
+    .small { font-size: 12px; color: #444; }
+  </style>
+</head>
+<body>
+  <h2>Geets Dev Client</h2>
+
+  <div class="row">
+    <div>
+      <label>API base</label>
+      <input id="apiBase" value="http://127.0.0.1:8000" />
+      <label>WS base</label>
+      <input id="wsBase" value="ws://127.0.0.1:8000/ws" />
+      <label>Token</label>
+      <input id="token" placeholder="paste JWT token here" />
+
+      <button id="connectBtn">Connect WS</button>
+      <button id="disconnectBtn">Disconnect</button>
+
+      <div class="small" id="status">status: idle</div>
+
+      <hr />
+
+      <label>Conversation ID</label>
+      <input id="convId" placeholder="uuid" />
+
+      <label>Message body</label>
+      <input id="msgBody" value="hello from dev client" />
+
+      <button id="sendCreateMsg">WS: message.create</button>
+
+      <label>Message ID (for delivered)</label>
+      <input id="messageId" placeholder="uuid from received message" />
+      <button id="sendDelivered">WS: message.delivered</button>
+
+      <label>Last seen message id</label>
+      <input id="lastSeenId" placeholder="uuid" />
+      <button id="sendSeen">WS: message.seen</button>
+
+      <button id="sendPing">WS: ping</button>
+    </div>
+
+    <div>
+      <label>Raw send</label>
+      <textarea id="rawSend" rows="6">{ "type": "ping", "payload": { "ts": "now" } }</textarea>
+      <button id="sendRaw">Send raw</button>
+
+      <label>Log</label>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+<script>
+  let ws = null;
+  let pingTimer = null;
+  let pongTimer = null;
+  let lastPong = Date.now();
+
+  const logEl = document.getElementById("log");
+  const statusEl = document.getElementById("status");
+
+  function log(...args) {
+    const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+    logEl.textContent = `[${new Date().toISOString()}] ${line}\n` + logEl.textContent;
+  }
+
+  function setStatus(s) {
+    statusEl.textContent = `status: ${s}`;
+  }
+
+  function getWsUrl() {
+    const wsBase = document.getElementById("wsBase").value.trim();
+    const token = document.getElementById("token").value.trim();
+    const u = new URL(wsBase);
+    if (token) u.searchParams.set("token", token);
+    return u.toString();
+  }
+
+    function startHeartbeat() {
+    stopHeartbeat();
+
+    const doPing = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // перед новым ожиданием — гасим старое
+        if (pongTimer) {
+        clearTimeout(pongTimer);
+        pongTimer = null;
+        }
+
+        send({ type: "ping", payload: { ts: new Date().toISOString() } });
+
+        // ждём pong максимум 4 секунды
+        pongTimer = setTimeout(() => {
+        log("pong timeout -> closing");
+        try { ws.close(1001, "pong timeout"); } catch {}
+        }, 4000);
+    };
+
+    // первый ping сразу
+    doPing();
+
+    // дальше каждые 10 секунд
+    pingTimer = setInterval(doPing, 10000);
+    }
+
+    function stopHeartbeat() {
+    if (pingTimer) clearInterval(pingTimer);
+    if (pongTimer) clearTimeout(pongTimer);
+    pingTimer = null;
+    pongTimer = null;
+    }
+
+
+  function connect() {
+    const url = getWsUrl();
+    log("connecting", url);
+    setStatus("connecting");
+
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      log("ws open");
+      setStatus("open");
+      lastPong = Date.now();
+      startHeartbeat();
+    };
+
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { log("non-json", ev.data); return; }
+
+      if (msg.type === "pong") {
+        lastPong = Date.now();
+        if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+        log("pong");
+        return;
+      }
+
+      // helpful auto-fill:
+      if (msg.type === "message.create" && msg.payload?.id) {
+        document.getElementById("messageId").value = msg.payload.id;
+        document.getElementById("lastSeenId").value = msg.payload.id;
+      }
+
+      log("recv", msg);
+    };
+
+    ws.onclose = (ev) => {
+      stopHeartbeat();
+      log("ws close", { code: ev.code, reason: ev.reason });
+      setStatus("closed");
+      ws = null;
+    };
+
+    ws.onerror = () => {
+      log("ws error");
+    };
+  }
+
+  function disconnect() {
+    stopHeartbeat();
+    if (ws) ws.close(1000, "manual");
+    ws = null;
+    setStatus("idle");
+    log("manual disconnect");
+  }
+
+  function send(obj) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      log("send failed: ws not open");
+      return;
+    }
+    ws.send(JSON.stringify(obj));
+    log("sent", obj);
+  }
+
+  document.getElementById("connectBtn").onclick = connect;
+  document.getElementById("disconnectBtn").onclick = disconnect;
+
+  document.getElementById("sendPing").onclick = () => send({ type: "ping", payload: { ts: new Date().toISOString() }});
+
+  document.getElementById("sendCreateMsg").onclick = () => {
+    const conversation_id = document.getElementById("convId").value.trim();
+    const body = document.getElementById("msgBody").value;
+    send({ type: "message.create", payload: { conversation_id, body }});
+  };
+
+  document.getElementById("sendDelivered").onclick = () => {
+    const message_id = document.getElementById("messageId").value.trim();
+    send({ type: "message.delivered", payload: { message_id }});
+  };
+
+  document.getElementById("sendSeen").onclick = () => {
+    const conversation_id = document.getElementById("convId").value.trim();
+    const last_seen_message_id = document.getElementById("lastSeenId").value.trim();
+    send({ type: "message.seen", payload: { conversation_id, last_seen_message_id }});
+  };
+
+  document.getElementById("sendRaw").onclick = () => {
+    const txt = document.getElementById("rawSend").value;
+    try { send(JSON.parse(txt)); } catch { log("raw json invalid"); }
+  };
+</script>
+</body>
+</html>

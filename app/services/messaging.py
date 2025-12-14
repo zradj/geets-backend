@@ -4,13 +4,28 @@ import uuid
 
 from sqlmodel import Session, select, desc
 
-from schemas import ConversationParticipant, Message, MessageReceipt, ReceiptStatus
+from schemas import ConversationParticipant, Message, MessageReceipt, ReceiptStatus, Conversation
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
 
+class NotFoundError(Exception):
+    pass
+
+class BadRequestError(Exception):
+    pass
+
 class PermissionError(Exception):
     pass
+
+class PermissionError(Exception):
+    pass
+
+def require_conversation(session: Session, conversation_id: uuid.UUID) -> Conversation:
+    conv = session.get(Conversation, conversation_id)
+    if not conv:
+        raise NotFoundError("Conversation not found")
+    return conv
 
 def is_participant(session: Session, user_id: uuid.UUID, conversation_id: uuid.UUID):
     participant = session.exec(
@@ -24,49 +39,65 @@ def is_participant(session: Session, user_id: uuid.UUID, conversation_id: uuid.U
     return bool(participant)
 
 def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    if not is_participant(session, user_id, payload['conversation_id']):
-        raise PermissionError('Not a participant')
+    conversation_id = payload.get("conversation_id")
+    body = payload.get("body")
+
+    if not conversation_id or not isinstance(conversation_id, uuid.UUID):
+        raise BadRequestError("conversation_id is required and must be UUID")
+    if not body or not isinstance(body, str) or not body.strip():
+        raise BadRequestError("body is required")
+
+    require_conversation(session, conversation_id)
+
+    if not is_participant(session, user_id, conversation_id):
+        raise PermissionError("Not a participant")
 
     message = Message(
-        conversation_id=payload['conversation_id'],
+        conversation_id=conversation_id,
         sender_id=user_id,
-        body=payload['body'],
+        body=body,
     )
     session.add(message)
     session.commit()
     session.refresh(message)
 
-    participants = session.exec(
+    participants: list[uuid.UUID] = session.exec(
         select(ConversationParticipant.user_id)
-        .where(ConversationParticipant.conversation_id == message.conversation_id)
+        .where(ConversationParticipant.conversation_id == conversation_id)
     ).all()
 
-    for (participant_user_id,) in participants:
+    for participant_user_id in participants:
         if participant_user_id == user_id:
             continue
-        session.add(MessageReceipt(
-            message_id=message.id,
-            user_id=participant_user_id,
-            status=ReceiptStatus.SENT,
-        ))
+        session.add(
+            MessageReceipt(
+                message_id=message.id,
+                user_id=participant_user_id,
+                status=ReceiptStatus.SENT,
+            )
+        )
 
     session.commit()
 
-    message_json = message.model_dump_json()
-    return json.loads(message_json)
+    return json.loads(message.model_dump_json())
+
 
 
 def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     message = session.get(Message, payload['id'])
     if not message or message.deleted:
-        raise ValueError('Message not found')
+        raise NotFoundError("Message not found")
 
     if not is_participant(session, user_id, message.conversation_id):
         raise PermissionError('Not a participant')
     
     if message.sender_id != user_id:
         raise PermissionError('Only sender can edit the message')
-    
+
+    new_body = payload.get("new_body")
+    if not new_body or not isinstance(new_body, str) or not new_body.strip():
+        raise BadRequestError("new_body is required")
+
     message.body = payload['new_body']
     message.edited = True
     session.add(message)
@@ -78,9 +109,13 @@ def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
 
 def delete_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    message = session.get(Message, payload['id'])
+    message_id = payload.get("message_id")
+    if not message_id or not isinstance(message_id, uuid.UUID):
+        raise BadRequestError("message_id is required and must be UUID")
+
+    message = session.get(Message, message_id)
     if not message or message.deleted:
-        raise ValueError('Message not found')
+        raise NotFoundError("Message not found")
 
     if not is_participant(session, user_id, message.conversation_id):
         raise PermissionError('Not a participant')
@@ -148,8 +183,15 @@ def mark_delivered(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
     
 def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    conversation_id: uuid.UUID = payload["conversation_id"]
-    last_seen_message_id: uuid.UUID = payload["last_seen_message_id"]
+    conversation_id = payload.get("conversation_id")
+    last_seen_message_id = payload.get("last_seen_message_id")
+
+    if not conversation_id or not isinstance(conversation_id, uuid.UUID):
+        raise BadRequestError("conversation_id is required and must be UUID")
+    if not last_seen_message_id or not isinstance(last_seen_message_id, uuid.UUID):
+        raise BadRequestError("last_seen_message_id is required and must be UUID")
+
+    require_conversation(session, conversation_id)
 
     if not is_participant(session, user_id, conversation_id):
         raise PermissionError("Not a participant")
@@ -171,7 +213,7 @@ def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     ).all()
 
     updated = 0
-    for (mid,) in message_ids:
+    for mid in message_ids:
         msg = session.get(Message, mid)
         if msg and msg.sender_id == user_id:
             continue
