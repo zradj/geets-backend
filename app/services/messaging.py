@@ -3,8 +3,7 @@ import logging
 import uuid
 
 from sqlmodel import Session, select, desc
-
-from schemas import ConversationParticipant, Message, MessageReceipt, ReceiptStatus, Conversation
+from schemas import ConversationParticipant, Message, MessageReceipt, ReceiptStatus, Conversation, dump_model
 from datetime import datetime, UTC
 
 logger = logging.getLogger(__name__)
@@ -39,23 +38,13 @@ def is_participant(session: Session, user_id: uuid.UUID, conversation_id: uuid.U
     return bool(participant)
 
 def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    conversation_id = payload.get("conversation_id")
-    body = payload.get("body")
-
-    if not conversation_id or not isinstance(conversation_id, uuid.UUID):
-        raise BadRequestError("conversation_id is required and must be UUID")
-    if not body or not isinstance(body, str) or not body.strip():
-        raise BadRequestError("body is required")
-
-    require_conversation(session, conversation_id)
-
-    if not is_participant(session, user_id, conversation_id):
+    if not is_participant(session, user_id, payload["conversation_id"]):
         raise PermissionError("Not a participant")
 
     message = Message(
-        conversation_id=conversation_id,
+        conversation_id=payload["conversation_id"],
         sender_id=user_id,
-        body=body,
+        body=payload["body"],
     )
     session.add(message)
     session.commit()
@@ -63,8 +52,10 @@ def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
     participants: list[uuid.UUID] = session.exec(
         select(ConversationParticipant.user_id)
-        .where(ConversationParticipant.conversation_id == conversation_id)
+        .where(ConversationParticipant.conversation_id == payload["conversation_id"])
     ).all()
+
+    now = datetime.now(tz=UTC)
 
     for participant_user_id in participants:
         if participant_user_id == user_id:
@@ -73,14 +64,16 @@ def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
             MessageReceipt(
                 message_id=message.id,
                 user_id=participant_user_id,
-                status=ReceiptStatus.SENT,
+                status=ReceiptStatus.DELIVERED,
+                delivered_at=now,
             )
         )
-
     session.commit()
 
-    return json.loads(message.model_dump_json())
-
+    out = dump_model(message)
+    out["status"] = "DELIVERED"
+    out["delivered_at"] = now.isoformat()
+    return out
 
 
 def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
@@ -103,13 +96,11 @@ def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     session.add(message)
     session.commit()
     session.refresh(message)
-
-    message_json = message.model_dump_json()
-    return json.loads(message_json)
+    return dump_model(message)
 
 
 def delete_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    message_id = payload.get("message_id")
+    message_id = payload.get("message_id") or payload.get("id")
     if not message_id or not isinstance(message_id, uuid.UUID):
         raise BadRequestError("message_id is required and must be UUID")
 
@@ -127,9 +118,7 @@ def delete_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     session.add(message)
     session.commit()
     session.refresh(message)
-
-    message_json = message.model_dump_json()
-    return json.loads(message_json)
+    return dump_model(message)
 
 def get_messages(session: Session, conversation_id: uuid.UUID) -> list[Message]:
     messages = session.exec(
@@ -220,9 +209,15 @@ def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
         receipt = session.get(MessageReceipt, (mid, user_id))
         if not receipt:
-            continue
-        if receipt.status == ReceiptStatus.SEEN:
-            continue
+            receipt = MessageReceipt(message_id=mid, user_id=user_id, status=ReceiptStatus.SENT)
+            session.add(receipt)
+
+        if receipt.status != ReceiptStatus.SEEN:
+            receipt.status = ReceiptStatus.SEEN
+            receipt.seen_at = now
+            if receipt.delivered_at is None:
+                receipt.delivered_at = now
+            session.add(receipt)
 
         receipt.status = ReceiptStatus.SEEN
         receipt.seen_at = now

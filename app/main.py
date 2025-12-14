@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
     app.state.consumers = []
     app.state.consumer_tasks = []
 
-    message_routing_keys = [f"conversation.*.{et}" for et in ("created", "edited", "deleted")]
+    message_routing_keys = [f'conversation.*.{et}' for et in ('created','edited','deleted','delivered','seen')]
     queue_name = f"ws_bridge.{uuid.uuid4()}"
 
     message_consumer = RMQConsumer(
