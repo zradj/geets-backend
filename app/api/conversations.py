@@ -14,7 +14,6 @@ from utils.auth import get_token_user_id_http
 router = APIRouter(prefix='/conversations')
 
 class CreateConversationRequest(BaseModel):
-    title: str = Field(max_length=100)
     other_id: uuid.UUID
 
 @router.post('/create')
@@ -27,7 +26,7 @@ async def create_conversation(
     if not other:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail='Adding a non-existing user')
 
-    conversation = Conversation(title=data.title)
+    conversation = Conversation()
 
     creating_participant = ConversationParticipant(
         conversation_id=conversation.id,
@@ -75,3 +74,46 @@ async def get_conversation_messages(
         .order_by(desc(Message.created_at))
     ).all()
     return list(messages)
+
+@router.delete('/{conversation_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_token_user_id_http)],
+    session: Session = Depends(get_session),
+) -> None:
+    conversation = session.get(Conversation, conversation_id)
+    conversation_participant = session.get(ConversationParticipant, (conversation_id, user_id))
+    if not conversation or conversation.deleted or not conversation_participant:
+        return
+    
+    if conversation.is_group and conversation_participant.role != ParticipantRole.ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, 'Only admin can delete a group')
+    
+    conversation.deleted = True
+    session.add(conversation)
+    session.commit()
+
+    return
+
+@router.delete('/{conversation_id}/participants/{participant_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def remove_group_participant(
+    conversation_id: uuid.UUID,
+    participant_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_token_user_id_http)],
+    session: Session = Depends(get_session),
+) -> None:
+    conversation = session.get(Conversation, conversation_id)
+    remover = session.get(ConversationParticipant, (conversation_id, user_id))
+    to_remove = session.get(ConversationParticipant, (conversation_id, participant_id))
+    if not conversation or conversation.deleted or not to_remove or not remover:
+        return
+    
+    if not conversation.is_group:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Cannot leave from a regular conversation; delete it instead')
+    
+    if participant_id != user_id and remover.role != ParticipantRole.ADMIN:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, 'Only admin can remove other members from a group')
+    
+    session.delete(to_remove)
+    session.commit()
+    return
