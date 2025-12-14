@@ -1,6 +1,9 @@
+import uuid
 from datetime import datetime, timedelta, UTC
+from typing import Annotated
 
 import jwt
+from fastapi import Query
 
 from config import TOKEN_SECRET_KEY, TOKEN_ALGORITHM, TOKEN_EXPIRE_MINS, pwd_ctx
 from db.session import get_session
@@ -34,3 +37,10 @@ def verify_token(token: str) -> bool:
 
 def decode_token(token: str) -> dict:
     return jwt.decode(token, TOKEN_SECRET_KEY, algorithms=[TOKEN_ALGORITHM])
+
+def get_token_user_id(token: Annotated[str, Query()] = None) -> uuid.UUID | None:
+    if token is None or not verify_token(token):
+        return None
+
+    token_data = decode_token(token)
+    return uuid.UUID(token_data['sub'])
