@@ -53,7 +53,7 @@ async def get_conversations(
 ) -> list[Conversation]:
     conversations = session.exec(
         select(ConversationParticipant.conversation_id.label('id'), Conversation.title, Conversation.is_group)
-        .where(ConversationParticipant.user_id == user_id)
+        .where(ConversationParticipant.user_id == user_id, Conversation.deleted == False)
         .join(Conversation, Conversation.id == ConversationParticipant.conversation_id)
     ).all()
 
@@ -94,6 +94,34 @@ async def delete_conversation(
     session.commit()
 
     return
+
+@router.put('/{conversation_id}/participants/{participant_id}', status_code=status.HTTP_204_NO_CONTENT)
+async def add_group_participant(
+    conversation_id: uuid.UUID,
+    participant_id: uuid.UUID,
+    user_id: Annotated[uuid.UUID, Depends(get_token_user_id_http)],
+    session: Session = Depends(get_session),
+) -> None:
+    conversation = session.get(Conversation, conversation_id)
+    adder = session.get(ConversationParticipant, (conversation_id, user_id))
+    to_add = session.get(User, participant_id)
+    if not conversation or conversation.deleted or not adder:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, 'Could not find conversation')
+    
+    if not conversation.is_group:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Can only add participants to a group')
+    
+    if not to_add:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, 'Adding a non-existing user')
+    
+    added_participant = ConversationParticipant(
+        conversation_id=conversation_id,
+        user_id=participant_id
+    )
+    session.add(added_participant)
+    session.commit()
+
+    return None
 
 @router.delete('/{conversation_id}/participants/{participant_id}', status_code=status.HTTP_204_NO_CONTENT)
 async def remove_group_participant(
