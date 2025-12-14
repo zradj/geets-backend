@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, UTC
 
-from sqlalchemy import Column
+from sqlmodel import Column
 from db.types import EncryptedString
 from sqlmodel import SQLModel, Field
 

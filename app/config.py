@@ -7,7 +7,7 @@ from passlib.context import CryptContext
 
 RMQ_URL = 'amqp://guest:guest@localhost'
 
-ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+ENV_PATH = Path(__file__).resolve().parents[1] / '.env'
 load_dotenv(dotenv_path=ENV_PATH)
 
 TOKEN_SECRET_KEY = os.getenv('JWT_SECRET')
@@ -21,10 +21,10 @@ PASSWORD_REGEX = re.compile(r'^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{8,100}$')
 pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
 
-DATA_ENCRYPTION_KEYS_RAW = os.getenv("DATA_ENCRYPTION_KEYS")
+DATA_ENCRYPTION_KEYS_RAW = os.getenv('DATA_ENCRYPTION_KEYS')
 if not DATA_ENCRYPTION_KEYS_RAW:
-    raise RuntimeError("Missing env var: DATA_ENCRYPTION_KEYS")
+    raise RuntimeError('Missing env var: DATA_ENCRYPTION_KEYS')
 
-DATA_ENCRYPTION_KEYS = [k.strip() for k in DATA_ENCRYPTION_KEYS_RAW.split(",") if k.strip()]
+DATA_ENCRYPTION_KEYS = [k.strip() for k in DATA_ENCRYPTION_KEYS_RAW.split(',') if k.strip()]
 if not DATA_ENCRYPTION_KEYS:
-    raise RuntimeError("DATA_ENCRYPTION_KEYS is empty")
+    raise RuntimeError('DATA_ENCRYPTION_KEYS is empty')
