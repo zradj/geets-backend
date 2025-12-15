@@ -20,11 +20,10 @@ PASSWORD_REGEX = re.compile(r'^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[a-zA-Z]).{8,1
 
 pwd_ctx = CryptContext(schemes=['bcrypt'], deprecated='auto')
 
-
 DATA_ENCRYPTION_KEYS_RAW = os.getenv('DATA_ENCRYPTION_KEYS')
 if not DATA_ENCRYPTION_KEYS_RAW:
-    raise RuntimeError('Missing env var: DATA_ENCRYPTION_KEYS')
+    raise RuntimeError('Missing env variable: DATA_ENCRYPTION_KEYS')
 
 DATA_ENCRYPTION_KEYS = [k.strip() for k in DATA_ENCRYPTION_KEYS_RAW.split(',') if k.strip()]
 if not DATA_ENCRYPTION_KEYS:
-    raise RuntimeError('DATA_ENCRYPTION_KEYS is empty')
+    raise RuntimeError('Missing env variable: DATA_ENCRYPTION_KEYS')

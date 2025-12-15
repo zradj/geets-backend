@@ -10,8 +10,8 @@ class Message(SQLModel, table=True):
     __tablename__ = 'messages'
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    conversation_id: uuid.UUID = Field(foreign_key="conversations.id", index=True)
-    sender_id: uuid.UUID = Field(foreign_key="users.id", index=True)
+    conversation_id: uuid.UUID = Field(foreign_key='conversations.id', index=True)
+    sender_id: uuid.UUID = Field(foreign_key='users.id', index=True)
 
     body: str = Field(sa_column=Column(EncryptedString, nullable=False))
 
@@ -20,4 +20,4 @@ class Message(SQLModel, table=True):
     deleted: bool = Field(default=False)
 
 def dump_model(m: Message) -> dict:
-    return MessageOut.model_validate(m).model_dump(mode="json")
+    return MessageOut.model_validate(m).model_dump(mode='json')

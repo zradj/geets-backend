@@ -23,7 +23,7 @@ class PermissionError(Exception):
 def require_conversation(session: Session, conversation_id: uuid.UUID) -> Conversation:
     conv = session.get(Conversation, conversation_id)
     if not conv:
-        raise NotFoundError("Conversation not found")
+        raise NotFoundError('Conversation not found')
     return conv
 
 def is_participant(session: Session, user_id: uuid.UUID, conversation_id: uuid.UUID):
@@ -38,13 +38,13 @@ def is_participant(session: Session, user_id: uuid.UUID, conversation_id: uuid.U
     return bool(participant)
 
 def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    if not is_participant(session, user_id, payload["conversation_id"]):
-        raise PermissionError("Not a participant")
+    if not is_participant(session, user_id, payload['conversation_id']):
+        raise PermissionError('Not a participant')
 
     message = Message(
-        conversation_id=payload["conversation_id"],
+        conversation_id=payload['conversation_id'],
         sender_id=user_id,
-        body=payload["body"],
+        body=payload['body'],
     )
     session.add(message)
     session.commit()
@@ -52,7 +52,7 @@ def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
     participants: list[uuid.UUID] = session.exec(
         select(ConversationParticipant.user_id)
-        .where(ConversationParticipant.conversation_id == payload["conversation_id"])
+        .where(ConversationParticipant.conversation_id == payload['conversation_id'])
     ).all()
 
     now = datetime.now(tz=UTC)
@@ -71,15 +71,15 @@ def create_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     session.commit()
 
     out = dump_model(message)
-    out["status"] = "DELIVERED"
-    out["delivered_at"] = now.isoformat()
+    out['status'] = 'DELIVERED'
+    out['delivered_at'] = now.isoformat()
     return out
 
 
 def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     message = session.get(Message, payload['id'])
     if not message or message.deleted:
-        raise NotFoundError("Message not found")
+        raise NotFoundError('Message not found')
 
     if not is_participant(session, user_id, message.conversation_id):
         raise PermissionError('Not a participant')
@@ -87,9 +87,9 @@ def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     if message.sender_id != user_id:
         raise PermissionError('Only sender can edit the message')
 
-    new_body = payload.get("new_body")
+    new_body = payload.get('new_body')
     if not new_body or not isinstance(new_body, str) or not new_body.strip():
-        raise BadRequestError("new_body is required")
+        raise BadRequestError('new_body is required')
 
     message.body = payload['new_body']
     message.edited = True
@@ -100,13 +100,13 @@ def edit_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
 
 def delete_message(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    message_id = payload.get("message_id") or payload.get("id")
+    message_id = payload.get('message_id') or payload.get('id')
     if not message_id or not isinstance(message_id, uuid.UUID):
-        raise BadRequestError("message_id is required and must be UUID")
+        raise BadRequestError('message_id is required and must be UUID')
 
     message = session.get(Message, message_id)
     if not message or message.deleted:
-        raise NotFoundError("Message not found")
+        raise NotFoundError('Message not found')
 
     if not is_participant(session, user_id, message.conversation_id):
         raise PermissionError('Not a participant')
@@ -130,17 +130,17 @@ def get_messages(session: Session, conversation_id: uuid.UUID) -> list[Message]:
 
 
 def mark_delivered(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    message_id: uuid.UUID = payload["message_id"]
+    message_id: uuid.UUID = payload['message_id']
 
     message = session.get(Message, message_id)
     if not message or message.deleted:
-        raise ValueError("Message not found")
+        raise ValueError('Message not found')
 
     if not is_participant(session, user_id, message.conversation_id):
-        raise PermissionError("Not a participant")
+        raise PermissionError('Not a participant')
 
     if message.sender_id == user_id:
-        raise PermissionError("Sender cannot deliver own message")
+        raise PermissionError('Sender cannot deliver own message')
 
     receipt = session.get(MessageReceipt, (message_id, user_id))
     if not receipt:
@@ -149,12 +149,12 @@ def mark_delivered(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
     if receipt.status in (ReceiptStatus.DELIVERED, ReceiptStatus.SEEN):
         return {
-            "message_id": str(message_id),
-            "conversation_id": str(message.conversation_id),
-            "user_id": str(user_id),
-            "status": receipt.status,
-            "delivered_at": receipt.delivered_at.isoformat() if receipt.delivered_at else None,
-            "seen_at": receipt.seen_at.isoformat() if receipt.seen_at else None,
+            'message_id': str(message_id),
+            'conversation_id': str(message.conversation_id),
+            'user_id': str(user_id),
+            'status': receipt.status,
+            'delivered_at': receipt.delivered_at.isoformat() if receipt.delivered_at else None,
+            'seen_at': receipt.seen_at.isoformat() if receipt.seen_at else None,
         }
 
     receipt.status = ReceiptStatus.DELIVERED
@@ -163,31 +163,31 @@ def mark_delivered(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     session.commit()
 
     return {
-        "message_id": str(message_id),
-        "conversation_id": str(message.conversation_id),
-        "user_id": str(user_id),
-        "status": "DELIVERED",
-        "delivered_at": receipt.delivered_at.isoformat(),
+        'message_id': str(message_id),
+        'conversation_id': str(message.conversation_id),
+        'user_id': str(user_id),
+        'status': 'DELIVERED',
+        'delivered_at': receipt.delivered_at.isoformat(),
     }
 
     
 def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
-    conversation_id = payload.get("conversation_id")
-    last_seen_message_id = payload.get("last_seen_message_id")
+    conversation_id = payload.get('conversation_id')
+    last_seen_message_id = payload.get('last_seen_message_id')
 
     if not conversation_id or not isinstance(conversation_id, uuid.UUID):
-        raise BadRequestError("conversation_id is required and must be UUID")
+        raise BadRequestError('conversation_id is required and must be UUID')
     if not last_seen_message_id or not isinstance(last_seen_message_id, uuid.UUID):
-        raise BadRequestError("last_seen_message_id is required and must be UUID")
+        raise BadRequestError('last_seen_message_id is required and must be UUID')
 
     require_conversation(session, conversation_id)
 
     if not is_participant(session, user_id, conversation_id):
-        raise PermissionError("Not a participant")
+        raise PermissionError('Not a participant')
 
     last_msg = session.get(Message, last_seen_message_id)
     if not last_msg or last_msg.conversation_id != conversation_id:
-        raise ValueError("Invalid last_seen_message_id")
+        raise ValueError('Invalid last_seen_message_id')
 
     cutoff = last_msg.created_at
     now = datetime.now(tz=UTC)
@@ -207,12 +207,12 @@ def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
 
         if not prev_other:
             return {
-                "conversation_id": str(conversation_id),
-                "user_id": str(user_id),
-                "status": "SEEN",
-                "last_seen_message_id": str(last_seen_message_id),
-                "seen_at": now.isoformat(),
-                "updated_count": 0,
+                'conversation_id': str(conversation_id),
+                'user_id': str(user_id),
+                'status': 'SEEN',
+                'last_seen_message_id': str(last_seen_message_id),
+                'seen_at': now.isoformat(),
+                'updated_count': 0,
             }
 
         cutoff = prev_other.created_at
@@ -246,10 +246,10 @@ def mark_seen(session: Session, user_id: uuid.UUID, payload: dict) -> dict:
     session.commit()
 
     return {
-        "conversation_id": str(conversation_id),
-        "user_id": str(user_id),
-        "status": "SEEN",
-        "last_seen_message_id": str(last_seen_message_id),
-        "seen_at": now.isoformat(),
-        "updated_count": updated,
+        'conversation_id': str(conversation_id),
+        'user_id': str(user_id),
+        'status': 'SEEN',
+        'last_seen_message_id': str(last_seen_message_id),
+        'seen_at': now.isoformat(),
+        'updated_count': updated,
     }

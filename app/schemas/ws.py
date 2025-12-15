@@ -24,10 +24,10 @@ class WSMessageDelete(SQLModel, table=False):
 
 async def handle_ping(ws, payload):
     await ws.send_json({
-        "type": "pong",
-        "payload": {
-            "ts": payload.get("ts"),
-            "server_ts": datetime.now(tz=UTC).isoformat(),
+        'type': 'pong',
+        'payload': {
+            'ts': payload.get('ts'),
+            'server_ts': datetime.now(tz=UTC).isoformat(),
         },
     })
 class WSMessageDelivered(SQLModel, table=False):

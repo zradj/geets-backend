@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 def _extract_conversation_id(payload: dict) -> uuid.UUID | None:
-    cid = payload.get("conversation_id")
-    if cid is None and isinstance(payload.get("message"), dict):
-        cid = payload["message"].get("conversation_id")
+    cid = payload.get('conversation_id')
+    if cid is None and isinstance(payload.get('message'), dict):
+        cid = payload['message'].get('conversation_id')
     if cid is None:
         return None
     try:
@@ -25,7 +25,7 @@ def _extract_conversation_id(payload: dict) -> uuid.UUID | None:
 
 
 def _extract_actor_id(payload: dict) -> uuid.UUID | None:
-    raw = payload.get("sender_id") or payload.get("user_id")
+    raw = payload.get('sender_id') or payload.get('user_id')
     if not raw:
         return None
     try:
@@ -37,16 +37,16 @@ def _extract_actor_id(payload: dict) -> uuid.UUID | None:
 async def rmq_ws_bridge(inc_message: aio_pika.IncomingMessage) -> None:
     try:
         data = json.loads(inc_message.body.decode())
-        event_type = data.get("type")
-        payload = data.get("payload")
+        event_type = data.get('type')
+        payload = data.get('payload')
 
         if not isinstance(event_type, str) or not isinstance(payload, dict):
-            logger.warning("Bad RMQ message format: %r", data)
+            logger.warning('Bad RMQ message format: %r', data)
             return
 
         conversation_id = _extract_conversation_id(payload)
         if conversation_id is None:
-            logger.warning("No conversation_id in payload for event=%s payload=%r", event_type, payload)
+            logger.warning('No conversation_id in payload for event=%s payload=%r', event_type, payload)
             return
 
         actor_id = _extract_actor_id(payload)
@@ -61,7 +61,7 @@ async def rmq_ws_bridge(inc_message: aio_pika.IncomingMessage) -> None:
         finally:
             session.close()
 
-        out = {"type": event_type, "payload": payload}
+        out = {'type': event_type, 'payload': payload}
 
         for uid in participant_ids:
             # чтобы sender не получал дубль (он уже получил echo в ws endpoint)
@@ -70,4 +70,4 @@ async def rmq_ws_bridge(inc_message: aio_pika.IncomingMessage) -> None:
             await manager.send_to_user(out, uid)
 
     except Exception:
-        logger.exception("Failed to bridge RMQ to WS")
+        logger.exception('Failed to bridge RMQ to WS')

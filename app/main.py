@@ -3,7 +3,7 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware  # ✅ add this
+from fastapi.middleware.cors import CORSMiddleware
 
 from api import api_router
 from config import RMQ_URL
@@ -18,19 +18,19 @@ async def lifespan(app: FastAPI):
     init_db()
     app.state.rabbit = RMQConnection(RMQ_URL)
     await app.state.rabbit.connect()
-    await app.state.rabbit.declare_exchange("messages")
-    app.state.message_publisher = RMQPublisher(app.state.rabbit, exchange_name="messages")
+    await app.state.rabbit.declare_exchange('messages')
+    app.state.message_publisher = RMQPublisher(app.state.rabbit, exchange_name='messages')
     app.state.consumers = []
     app.state.consumer_tasks = []
 
     message_routing_keys = [f'conversation.*.{et}' for et in ('created','edited','deleted','delivered','seen')]
-    queue_name = f"ws_bridge.{uuid.uuid4()}"
+    queue_name = f'ws_bridge.{uuid.uuid4()}'
 
     message_consumer = RMQConsumer(
         app.state.rabbit,
         queue_name=queue_name,
         routing_keys=message_routing_keys,
-        exchange_name="messages",
+        exchange_name='messages',
     )
     app.state.consumers.append(message_consumer)
 
@@ -54,14 +54,14 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=['*'],
+    allow_headers=['*'],
 )
 
 app.include_router(api_router)
