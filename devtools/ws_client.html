@@ -1,0 +1,285 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Geets Dev Client (2-up)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1400px; margin: 20px auto; }
+    input, button, textarea { padding: 8px; margin: 4px 0; width: 100%; box-sizing: border-box; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    pre { background: #111; color: #0f0; padding: 10px; height: 360px; overflow: auto; border-radius: 8px; }
+    .small { font-size: 12px; color: #444; }
+    .muted { color: #666; font-size: 13px; }
+    .title { font-weight: 700; margin-bottom: 8px; }
+    .pill { display:inline-block; padding:2px 8px; border-radius: 999px; background:#eee; font-size:12px; }
+    button { cursor:pointer; }
+  </style>
+</head>
+<body>
+  <h2>Geets Dev Client — 2 clients (A & B)</h2>
+  <div class="muted">
+    Цель: подключить два WS клиента с разными токенами и увидеть, что события приходят друг другу.
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>WS base</label>
+        <input id="wsBase" value="ws://127.0.0.1:8000/ws" />
+        <div class="small">Должен быть ваш backend WS endpoint. Токен будет добавлен как ?token=...</div>
+      </div>
+      <div>
+        <label>Conversation ID (общий)</label>
+        <input id="convId" placeholder="uuid" />
+        <div class="small">Одинаковый для A и B. Создай conversation в API или возьми существующий id.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+
+    <!-- CLIENT A -->
+    <div class="card">
+      <div class="title">Client A <span class="pill" id="statusA">idle</span></div>
+
+      <label>Token A</label>
+      <input id="tokenA" placeholder="paste JWT token A" />
+
+      <div class="row">
+        <button id="connectA">Connect A</button>
+        <button id="disconnectA">Disconnect A</button>
+      </div>
+
+      <label>Message (A → conversation)</label>
+      <input id="msgA" value="hello from A" />
+      <button id="sendA">WS: message.create (A)</button>
+
+      <div class="row">
+        <button id="seenA">WS: message.seen (A up to last received)</button>
+        <button id="pingA">WS: ping (A)</button>
+      </div>
+
+      <label class="small">
+        <input type="checkbox" id="autoSeenA" />
+        auto-send seen when A receives a message in this conversation
+      </label>
+
+      <label>Log A</label>
+      <pre id="logA"></pre>
+    </div>
+
+    <!-- CLIENT B -->
+    <div class="card">
+      <div class="title">Client B <span class="pill" id="statusB">idle</span></div>
+
+      <label>Token B</label>
+      <input id="tokenB" placeholder="paste JWT token B" />
+
+      <div class="row">
+        <button id="connectB">Connect B</button>
+        <button id="disconnectB">Disconnect B</button>
+      </div>
+
+      <label>Message (B → conversation)</label>
+      <input id="msgB" value="hello from B" />
+      <button id="sendB">WS: message.create (B)</button>
+
+      <div class="row">
+        <button id="seenB">WS: message.seen (B up to last received)</button>
+        <button id="pingB">WS: ping (B)</button>
+      </div>
+
+      <label class="small">
+        <input type="checkbox" id="autoSeenB" />
+        auto-send seen when B receives a message in this conversation
+      </label>
+
+      <label>Log B</label>
+      <pre id="logB"></pre>
+    </div>
+
+  </div>
+
+  <div class="card">
+    <div class="title">Raw send (optional)</div>
+    <div class="row">
+      <div>
+        <label>Client</label>
+        <select id="rawClient">
+          <option value="A">A</option>
+          <option value="B">B</option>
+        </select>
+      </div>
+      <div></div>
+    </div>
+    <label>JSON</label>
+    <textarea id="rawSend" rows="5">{ "type": "ping", "payload": { "ts": "now" } }</textarea>
+    <button id="sendRaw">Send raw</button>
+  </div>
+
+<script>
+  function $(id){ return document.getElementById(id); }
+
+  function makeClient(name) {
+    const logEl = $(name === "A" ? "logA" : "logB");
+    const statusEl = $(name === "A" ? "statusA" : "statusB");
+    const tokenEl = $(name === "A" ? "tokenA" : "tokenB");
+    const autoSeenEl = $(name === "A" ? "autoSeenA" : "autoSeenB");
+
+    let ws = null;
+    let pingTimer = null;
+    let pongTimer = null;
+    let lastSeenMessageId = null;
+
+    function log(...args) {
+      const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ");
+      logEl.textContent = `[${new Date().toISOString()}] ${line}\n` + logEl.textContent;
+    }
+
+    function setStatus(s) {
+      statusEl.textContent = s;
+    }
+
+    function getWsUrl() {
+      const wsBase = $("wsBase").value.trim();
+      const token = tokenEl.value.trim();
+      const u = new URL(wsBase);
+      if (token) u.searchParams.set("token", token);
+      return u.toString();
+    }
+
+    function stopHeartbeat() {
+      if (pingTimer) clearInterval(pingTimer);
+      if (pongTimer) clearTimeout(pongTimer);
+      pingTimer = null;
+      pongTimer = null;
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+
+      const doPing = () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+
+        send({ type: "ping", payload: { ts: new Date().toISOString(), client: name }});
+
+        pongTimer = setTimeout(() => {
+          log("pong timeout -> closing");
+          try { ws.close(1001, "pong timeout"); } catch {}
+        }, 4000);
+      };
+
+      doPing();
+      pingTimer = setInterval(doPing, 10000);
+    }
+
+    function connect() {
+      const url = getWsUrl();
+      log("connecting", url);
+      setStatus("connecting");
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        log("ws open");
+        setStatus("open");
+        startHeartbeat();
+      };
+
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { log("non-json", ev.data); return; }
+
+        if (msg.type === "pong") {
+          if (pongTimer) { clearTimeout(pongTimer); pongTimer = null; }
+          log("pong");
+          return;
+        }
+
+        // Helpful auto-fill: remember last message id
+        if ((msg.type === "message.new" || msg.type === "message.create") && msg.payload?.id) {
+          lastSeenMessageId = msg.payload.id;
+
+          // auto seen if enabled and message belongs to current conversation (best-effort)
+          const conv = $("convId").value.trim();
+          if (autoSeenEl.checked && msg.payload?.conversation_id === conv) {
+            send({ type: "message.seen", payload: { conversation_id: conv, last_seen_message_id: lastSeenMessageId }});
+          }
+        }
+
+        log("recv", msg);
+      };
+
+      ws.onclose = (ev) => {
+        stopHeartbeat();
+        log("ws close", { code: ev.code, reason: ev.reason });
+        setStatus("closed");
+        ws = null;
+      };
+
+      ws.onerror = () => log("ws error");
+    }
+
+    function disconnect() {
+      stopHeartbeat();
+      if (ws) ws.close(1000, "manual");
+      ws = null;
+      setStatus("idle");
+      log("manual disconnect");
+    }
+
+    function send(obj) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("send failed: ws not open");
+        return;
+      }
+      ws.send(JSON.stringify(obj));
+      log("sent", obj);
+    }
+
+    function sendCreate(body) {
+      const conversation_id = $("convId").value.trim();
+      send({ type: "message.create", payload: { conversation_id, body }});
+    }
+
+    function sendSeen() {
+      const conversation_id = $("convId").value.trim();
+      if (!lastSeenMessageId) {
+        log("no last message id yet");
+        return;
+      }
+      send({ type: "message.seen", payload: { conversation_id, last_seen_message_id: lastSeenMessageId }});
+    }
+
+    return { connect, disconnect, send, sendCreate, sendSeen, log };
+  }
+
+  const A = makeClient("A");
+  const B = makeClient("B");
+
+  $("connectA").onclick = () => A.connect();
+  $("disconnectA").onclick = () => A.disconnect();
+  $("sendA").onclick = () => A.sendCreate($("msgA").value);
+  $("seenA").onclick = () => A.sendSeen();
+  $("pingA").onclick = () => A.send({ type: "ping", payload: { ts: new Date().toISOString(), client: "A" }});
+
+  $("connectB").onclick = () => B.connect();
+  $("disconnectB").onclick = () => B.disconnect();
+  $("sendB").onclick = () => B.sendCreate($("msgB").value);
+  $("seenB").onclick = () => B.sendSeen();
+  $("pingB").onclick = () => B.send({ type: "ping", payload: { ts: new Date().toISOString(), client: "B" }});
+
+  $("sendRaw").onclick = () => {
+    const who = $("rawClient").value;
+    const txt = $("rawSend").value;
+    let obj;
+    try { obj = JSON.parse(txt); } catch { alert("raw json invalid"); return; }
+    (who === "A" ? A : B).send(obj);
+  };
+</script>
+</body>
+</html>

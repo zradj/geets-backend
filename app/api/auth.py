@@ -31,13 +31,17 @@ async def register(data: LoginRequest, session: Session = Depends(get_session)) 
     existing = session.exec(select(User).where(User.username == data.username)).first()
     if existing:
         raise HTTPException(status_code=400, detail='Username already registered')
-    hashed_pwd = get_password_hash(data.password)
-    user = User(username=data.username, password=hashed_pwd)
+
+    user = User(
+        username=data.username,
+        password_hash=get_password_hash(data.password),
+    )
     session.add(user)
     session.commit()
+    session.refresh(user)
+
     token = create_access_token({'sub': str(user.id), 'username': user.username})
     return SuccessfulAuthResponse(token=token)
-
 
 @router.post(
     '/login',
@@ -50,11 +54,12 @@ async def register(data: LoginRequest, session: Session = Depends(get_session)) 
 )
 async def login(data: LoginRequest, session: Session = Depends(get_session)) -> SuccessfulAuthResponse:
     user = session.exec(select(User).where(User.username == data.username)).first()
-    if not user or not verify_password(data.password, user.password):
+    if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail='Incorrect username or password',
             headers={'WWW-Authenticate': 'Bearer'},
         )
+
     token = create_access_token({'sub': str(user.id), 'username': user.username})
     return SuccessfulAuthResponse(token=token)
