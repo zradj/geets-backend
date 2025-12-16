@@ -1,5 +1,5 @@
 # geets-backend
-Backend for Gits Messenger™.
+Backend for Geets Messenger™.
 
 ## Installation and Startup
 1. Ensure you have the latest Python version installed on your machine.
