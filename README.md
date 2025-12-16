@@ -8,14 +8,17 @@ Backend for Gits Messenger™.
 python3 -m venv .venv
 ```
 3. Activate the virtual environment:
+
 Linux:
 ```bash
 source .venv/bin/activate
 ```
+
 Windows PowerShell:
 ```powershell
 .\.venv\Scripts\activate
 ```
+
 4. Install all of the dependencies:
 ```bash
 pip install -r requirements.txt
