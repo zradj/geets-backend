@@ -1,6 +1,8 @@
 # geets-backend
 Backend for Geets Messenger™.
 
+Deployed app link: https://geets-frontend-prod-production.up.railway.app
+
 ## Installation and Startup
 1. Ensure you have the latest Python version installed on your machine.
 2. Create the virtual environment:
